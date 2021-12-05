@@ -60,12 +60,6 @@ public class MeshSlice : MonoBehaviour
         m_newVertexInPlane.Clear();
     }
 
-    Vector3 GetVertexInPlane(Plane plane, Vector3 startPoint, Vector3 endPoint)
-    {
-        plane.Raycast(new Ray(startPoint, endPoint), out float ratio);
-        return Vector3.Lerp(startPoint, endPoint, ratio);
-    }
-
     MeshVertex GetMeshVertexInsidePlane(Plane plane, MeshVertex mv1, MeshVertex mv2)
     {
         MeshVertex newVertex;
@@ -77,10 +71,10 @@ public class MeshSlice : MonoBehaviour
             }
             else
             {
-                plane.Raycast(new Ray(mv1.vertex, mv2.vertex), out float ratio);
-                newVertex = new MeshVertex(Vector3.Lerp(mv1.vertex, mv2.vertex, ratio)
-                                            , Vector3.Lerp(mv1.normal, mv2.normal, ratio)
-                                            , Vector2.Lerp(mv1.uv, mv2.uv, ratio));
+                plane.Raycast(new Ray(mv1.vertex, (mv2.vertex - mv1.vertex).normalized), out float length);
+                newVertex = new MeshVertex(Vector3.Lerp(mv1.vertex, mv2.vertex, length / (mv2.vertex - mv1.vertex).magnitude)
+                                            , Vector3.Lerp(mv1.normal, mv2.normal, length / (mv2.vertex - mv1.vertex).magnitude)
+                                            , Vector2.Lerp(mv1.uv, mv2.uv, length / (mv2.vertex - mv1.vertex).magnitude));
                 if (!m_newVertexInPlane.ContainsKey(mv1.index)) { m_newVertexInPlane.Add(mv1.index, new Dictionary<int, MeshVertex>()); }
                 m_newVertexInPlane[mv1.index].Add(mv2.index, newVertex);
             }
@@ -93,10 +87,10 @@ public class MeshSlice : MonoBehaviour
             }
             else
             {
-                plane.Raycast(new Ray(mv1.vertex, mv2.vertex), out float ratio);
-                newVertex = new MeshVertex(Vector3.Lerp(mv1.vertex, mv2.vertex, ratio)
-                                            , Vector3.Lerp(mv1.normal, mv2.normal, ratio)
-                                            , Vector2.Lerp(mv1.uv, mv2.uv, ratio));
+                plane.Raycast(new Ray(mv1.vertex, (mv2.vertex - mv1.vertex).normalized), out float length);
+                newVertex = new MeshVertex(Vector3.Lerp(mv1.vertex, mv2.vertex, length / (mv2.vertex - mv1.vertex).magnitude)
+                                            , Vector3.Lerp(mv1.normal, mv2.normal, length / (mv2.vertex - mv1.vertex).magnitude)
+                                            , Vector2.Lerp(mv1.uv, mv2.uv, length / (mv2.vertex - mv1.vertex).magnitude));
                 if (!m_newVertexInPlane.ContainsKey(mv2.index)) { m_newVertexInPlane.Add(mv2.index, new Dictionary<int, MeshVertex>()); }
                 m_newVertexInPlane[mv2.index].Add(mv1.index, newVertex);
             }
@@ -107,7 +101,6 @@ public class MeshSlice : MonoBehaviour
 
     MeshVertex[] MakeNewVertexInPlane(Plane plane, List<MeshVertex>[] sideVertices)
     {
-        float ratio;
         MeshVertex[] newVertices = new MeshVertex[2];
         newVertices[0] = GetMeshVertexInsidePlane(plane, sideVertices[0][0], sideVertices[1][0]);
 
@@ -119,6 +112,10 @@ public class MeshSlice : MonoBehaviour
         {
             newVertices[1] = GetMeshVertexInsidePlane(plane, sideVertices[0][1], sideVertices[1][0]);
         }
+        if (sideVertices[0].Count == sideVertices[1].Count)
+        {
+            Debug.LogError("Error");
+        }
         return newVertices;
     }
 
@@ -126,38 +123,35 @@ public class MeshSlice : MonoBehaviour
     {
         for (int i = 0; i < 2; ++i)
         {
-            for (int h = 0; h < sideVertices[i].Count; ++h)
+            if (Vector3.Dot(faceNormal, Vector3.Cross(newMeshVertices[1].vertex - newMeshVertices[0].vertex, sideVertices[i][0].vertex - newMeshVertices[1].vertex)) < 0)
             {
-                if (Vector3.Dot(faceNormal, Vector3.Cross(newMeshVertices[1].vertex - newMeshVertices[0].vertex, sideVertices[i][h].vertex - newMeshVertices[1].vertex)) < 0)
-                {
-                    // Incorrect Direction
-                    m_sideIndices[i].Add(m_sideVertices[i].Count);
-                    m_sideVertices[i].Add(newMeshVertices[1].vertex);
-                    m_sideNormals[i].Add(newMeshVertices[1].normal);
-                    m_sideUvs[i].Add(newMeshVertices[1].uv);
+                // Incorrect Direction
+                m_sideIndices[i].Add(m_sideVertices[i].Count);
+                m_sideVertices[i].Add(newMeshVertices[1].vertex);
+                m_sideNormals[i].Add(newMeshVertices[1].normal);
+                m_sideUvs[i].Add(newMeshVertices[1].uv);
 
-                    m_sideIndices[i].Add(m_sideVertices[i].Count);
-                    m_sideVertices[i].Add(newMeshVertices[0].vertex);
-                    m_sideNormals[i].Add(newMeshVertices[0].normal);
-                    m_sideUvs[i].Add(newMeshVertices[0].uv);
+                m_sideIndices[i].Add(m_sideVertices[i].Count);
+                m_sideVertices[i].Add(newMeshVertices[0].vertex);
+                m_sideNormals[i].Add(newMeshVertices[0].normal);
+                m_sideUvs[i].Add(newMeshVertices[0].uv);
 
-                    DiviedVertexFromMesh(i == 0, sideVertices[i][h].index);
-                }
-                else
-                {
-                    // Correct Direction
-                    m_sideIndices[i].Add(m_sideVertices[i].Count);
-                    m_sideVertices[i].Add(newMeshVertices[0].vertex);
-                    m_sideNormals[i].Add(newMeshVertices[0].normal);
-                    m_sideUvs[i].Add(newMeshVertices[0].uv);
+                DiviedVertexFromMesh(i == 0, sideVertices[i][0].index);
+            }
+            else
+            {
+                // Correct Direction
+                m_sideIndices[i].Add(m_sideVertices[i].Count);
+                m_sideVertices[i].Add(newMeshVertices[0].vertex);
+                m_sideNormals[i].Add(newMeshVertices[0].normal);
+                m_sideUvs[i].Add(newMeshVertices[0].uv);
 
-                    m_sideIndices[i].Add(m_sideVertices[i].Count);
-                    m_sideVertices[i].Add(newMeshVertices[1].vertex);
-                    m_sideNormals[i].Add(newMeshVertices[1].normal);
-                    m_sideUvs[i].Add(newMeshVertices[1].uv);
+                m_sideIndices[i].Add(m_sideVertices[i].Count);
+                m_sideVertices[i].Add(newMeshVertices[1].vertex);
+                m_sideNormals[i].Add(newMeshVertices[1].normal);
+                m_sideUvs[i].Add(newMeshVertices[1].uv);
 
-                    DiviedVertexFromMesh(i == 0, sideVertices[i][h].index);
-                }    
+                DiviedVertexFromMesh(i == 0, sideVertices[i][0].index);
             }
         }
     }
@@ -228,8 +222,7 @@ public class MeshSlice : MonoBehaviour
                 // a side 1 vertex, other side 2 vertcies
                 // 1. Make Vertex Info
                 // 2. Add Triangle
-                AddSliceLineTriangle(Vector3.Cross(v1 - v0, v1 - v2), sideVertices, MakeNewVertexInPlane(slice, sideVertices));
-
+                AddSliceLineTriangle(Vector3.Cross(v1 - v0, v2 - v1), sideVertices, MakeNewVertexInPlane(slice, sideVertices));
             }
         }
 
@@ -287,6 +280,14 @@ public class MeshSlice : MonoBehaviour
             Gizmos.DrawLine(m_nearPoint[0], m_farPoint[0]);
             Gizmos.DrawLine(m_nearPoint[1], m_farPoint[1]);
             Gizmos.DrawLine(Vector3.zero, m_normal * 3);
+
+            foreach (var mapvertex in m_newVertexInPlane)
+            {
+                foreach (var mv in mapvertex.Value)
+                {
+                    Gizmos.DrawSphere(mv.Value.vertex, 0.003f);
+                }
+            }
         }
     }
 }
