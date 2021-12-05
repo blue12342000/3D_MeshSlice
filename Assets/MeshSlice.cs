@@ -167,7 +167,6 @@ public class MeshSlice : MonoBehaviour
             isDrawGizmo = true;
 
             SliceMesh();
-            //MeshCut.Cut(meshFilter.gameObject, m_startPoint, m_normal, cutMaterial);
 
             Debug.Log($"{m_nearPoint} -> {m_farPoint}");
             Debug.Log($"normal : {m_normal}");
