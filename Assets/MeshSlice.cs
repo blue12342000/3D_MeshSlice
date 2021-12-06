@@ -12,7 +12,8 @@ public class MeshSlice : MonoBehaviour
         public Vector3 normal;
         public Vector2 uv;
 
-        public MeshVertex(Vector3 _vertex, Vector3 _normal, Vector2 _uv) => (index, vertex, normal, uv) = (-1, _vertex, _normal, _uv);
+        public ref MeshVertex left;
+
         public MeshVertex(int _index, Vector3 _vertex, Vector3 _normal, Vector2 _uv) => (index, vertex, normal, uv) = (_index, _vertex, _normal, _uv);
     }
     
@@ -22,7 +23,7 @@ public class MeshSlice : MonoBehaviour
     bool isDrawGizmo = false;
 
     // Slice Side Mesh Vertices, Indices, Normals, Uvs
-    List<int>[] m_sideIndices = new List<int>[] { new List<int>(), new List<int>() };
+    List<int>[] m_sideIndices = new List<int>[] { new List<int>(), new List<int>(), new List<int>() };
     List<Vector3>[] m_sideVertices = new List<Vector3>[] { new List<Vector3>(), new List<Vector3>() };
     List<Vector3>[] m_sideNormals = new List<Vector3>[] { new List<Vector3>(), new List<Vector3>() };
     List<Vector2>[] m_sideUvs = new List<Vector2>[] { new List<Vector2>(), new List<Vector2>() };
@@ -31,8 +32,10 @@ public class MeshSlice : MonoBehaviour
     // New Vertices in Plane
     // Originl Vertices -> 2 Mesh vertices
     Dictionary<int, Dictionary<int, MeshVertex>> m_newVertexInPlane = new Dictionary<int, Dictionary<int, MeshVertex>>();
+    int m_newVertexCount = 0;
 
     // 임시 나중에 Collider나 Trigger로 해당되는 Mesh들을 검출
+    public GameObject targetObject;
     public MeshFilter meshFilter;
     public Material cutMaterial;
     public Material meshMat;
@@ -57,7 +60,10 @@ public class MeshSlice : MonoBehaviour
         m_sideUvs[1].Clear();
         m_sideVertexIndex[1].Clear();
 
+        m_sideIndices[2].Clear();
+
         m_newVertexInPlane.Clear();
+        m_newVertexCount = 0;
     }
 
     MeshVertex GetMeshVertexInsidePlane(Plane plane, MeshVertex mv1, MeshVertex mv2)
@@ -71,8 +77,10 @@ public class MeshSlice : MonoBehaviour
             }
             else
             {
+                ++m_newVertexCount;
                 plane.Raycast(new Ray(mv1.vertex, (mv2.vertex - mv1.vertex).normalized), out float length);
-                newVertex = new MeshVertex(Vector3.Lerp(mv1.vertex, mv2.vertex, length / (mv2.vertex - mv1.vertex).magnitude)
+                newVertex = new MeshVertex(-1 * m_newVertexCount
+                                            , Vector3.Lerp(mv1.vertex, mv2.vertex, length / (mv2.vertex - mv1.vertex).magnitude)
                                             , Vector3.Lerp(mv1.normal, mv2.normal, length / (mv2.vertex - mv1.vertex).magnitude)
                                             , Vector2.Lerp(mv1.uv, mv2.uv, length / (mv2.vertex - mv1.vertex).magnitude));
                 if (!m_newVertexInPlane.ContainsKey(mv1.index)) { m_newVertexInPlane.Add(mv1.index, new Dictionary<int, MeshVertex>()); }
@@ -87,8 +95,10 @@ public class MeshSlice : MonoBehaviour
             }
             else
             {
+                ++m_newVertexCount;
                 plane.Raycast(new Ray(mv1.vertex, (mv2.vertex - mv1.vertex).normalized), out float length);
-                newVertex = new MeshVertex(Vector3.Lerp(mv1.vertex, mv2.vertex, length / (mv2.vertex - mv1.vertex).magnitude)
+                newVertex = new MeshVertex(-1 * m_newVertexCount
+                                            , Vector3.Lerp(mv1.vertex, mv2.vertex, length / (mv2.vertex - mv1.vertex).magnitude)
                                             , Vector3.Lerp(mv1.normal, mv2.normal, length / (mv2.vertex - mv1.vertex).magnitude)
                                             , Vector2.Lerp(mv1.uv, mv2.uv, length / (mv2.vertex - mv1.vertex).magnitude));
                 if (!m_newVertexInPlane.ContainsKey(mv2.index)) { m_newVertexInPlane.Add(mv2.index, new Dictionary<int, MeshVertex>()); }
@@ -112,10 +122,6 @@ public class MeshSlice : MonoBehaviour
         {
             newVertices[1] = GetMeshVertexInsidePlane(plane, sideVertices[0][1], sideVertices[1][0]);
         }
-        if (sideVertices[0].Count == sideVertices[1].Count)
-        {
-            Debug.LogError("Error");
-        }
         return newVertices;
     }
 
@@ -126,32 +132,52 @@ public class MeshSlice : MonoBehaviour
             if (Vector3.Dot(faceNormal, Vector3.Cross(newMeshVertices[1].vertex - newMeshVertices[0].vertex, sideVertices[i][0].vertex - newMeshVertices[1].vertex)) < 0)
             {
                 // Incorrect Direction
-                m_sideIndices[i].Add(m_sideVertices[i].Count);
-                m_sideVertices[i].Add(newMeshVertices[1].vertex);
-                m_sideNormals[i].Add(newMeshVertices[1].normal);
-                m_sideUvs[i].Add(newMeshVertices[1].uv);
-
-                m_sideIndices[i].Add(m_sideVertices[i].Count);
-                m_sideVertices[i].Add(newMeshVertices[0].vertex);
-                m_sideNormals[i].Add(newMeshVertices[0].normal);
-                m_sideUvs[i].Add(newMeshVertices[0].uv);
-
+                DiviedVertexFromMesh(i == 0, newMeshVertices[1]);
+                DiviedVertexFromMesh(i == 0, newMeshVertices[0]);
                 DiviedVertexFromMesh(i == 0, sideVertices[i][0].index);
+
+                if (sideVertices[i].Count == 2)
+                {
+                    if (Vector3.Dot(newMeshVertices[0].vertex - newMeshVertices[1].vertex, sideVertices[i][1].vertex - sideVertices[i][0].vertex) < 0)
+                    {
+                        // Correct Direction
+                        DiviedVertexFromMesh(i == 0, sideVertices[i][0].index);
+                        DiviedVertexFromMesh(i == 0, sideVertices[i][1].index);
+                        DiviedVertexFromMesh(i == 0, newMeshVertices[1]);
+                    }
+                    else
+                    {
+                        // Incorrect Direction
+                        DiviedVertexFromMesh(i == 0, newMeshVertices[0]);
+                        DiviedVertexFromMesh(i == 0, sideVertices[i][1].index);
+                        DiviedVertexFromMesh(i == 0, sideVertices[i][0].index);
+                    }
+                }
             }
             else
             {
                 // Correct Direction
-                m_sideIndices[i].Add(m_sideVertices[i].Count);
-                m_sideVertices[i].Add(newMeshVertices[0].vertex);
-                m_sideNormals[i].Add(newMeshVertices[0].normal);
-                m_sideUvs[i].Add(newMeshVertices[0].uv);
-
-                m_sideIndices[i].Add(m_sideVertices[i].Count);
-                m_sideVertices[i].Add(newMeshVertices[1].vertex);
-                m_sideNormals[i].Add(newMeshVertices[1].normal);
-                m_sideUvs[i].Add(newMeshVertices[1].uv);
-
+                DiviedVertexFromMesh(i == 0, newMeshVertices[0]);
+                DiviedVertexFromMesh(i == 0, newMeshVertices[1]);
                 DiviedVertexFromMesh(i == 0, sideVertices[i][0].index);
+
+                if (sideVertices[i].Count == 2)
+                {
+                    if (Vector3.Dot(newMeshVertices[1].vertex - newMeshVertices[0].vertex, sideVertices[i][1].vertex - sideVertices[i][0].vertex) < 0)
+                    {
+                        // Correct Direction
+                        DiviedVertexFromMesh(i == 0, newMeshVertices[0]);
+                        DiviedVertexFromMesh(i == 0, sideVertices[i][0].index);
+                        DiviedVertexFromMesh(i == 0, sideVertices[i][1].index);
+                    }
+                    else
+                    {
+                        // Incorrect Direction
+                        DiviedVertexFromMesh(i == 0, newMeshVertices[1]);
+                        DiviedVertexFromMesh(i == 0, sideVertices[i][1].index);
+                        DiviedVertexFromMesh(i == 0, sideVertices[i][0].index);
+                    }
+                }
             }
         }
     }
@@ -175,6 +201,24 @@ public class MeshSlice : MonoBehaviour
         }
     }
 
+    void DiviedVertexFromMesh(bool sideFlag, MeshVertex meshVertex)
+    {
+        int side = sideFlag ? 0 : 1;
+
+        if (m_sideVertexIndex[side].ContainsKey(meshVertex.index))
+        {
+            m_sideIndices[side].Add(m_sideVertexIndex[side][meshVertex.index]);
+        }
+        else
+        {
+            m_sideVertexIndex[side].Add(meshVertex.index, m_sideVertices[side].Count);
+            m_sideIndices[side].Add(m_sideVertices[side].Count);
+            m_sideVertices[side].Add(meshVertex.vertex);
+            m_sideNormals[side].Add(meshVertex.normal);
+            m_sideUvs[side].Add(meshVertex.uv);
+        }
+    }
+
     void SliceMesh()
     {
         ResetSideData();
@@ -187,7 +231,6 @@ public class MeshSlice : MonoBehaviour
         bool[] sides = new bool[3];
 
         List<MeshVertex>[] sideVertices = new List<MeshVertex>[] { new List<MeshVertex>(), new List<MeshVertex>() };
-        Dictionary<int, Dictionary<int, MeshVertex>> newVertex = new Dictionary<int, Dictionary<int, MeshVertex>>();
 
         for (int i = 0; i < indices.Length; i += 3)
         {
@@ -226,16 +269,23 @@ public class MeshSlice : MonoBehaviour
             }
         }
 
+        // Make Slice Side Mesh
+
+
         Mesh[] newMeshes = new Mesh[] { new Mesh(), new Mesh() };
         newMeshes[0].name = "Slice Side Main Mesh";
+        newMeshes[0].subMeshCount = meshFilter.mesh.subMeshCount + 1;
         newMeshes[0].vertices = m_sideVertices[0].ToArray();
         newMeshes[0].SetIndices(m_sideIndices[0].ToArray(), MeshTopology.Triangles, 0);
+        newMeshes[0].SetIndices(m_sideIndices[2].ToArray(), MeshTopology.Triangles, 1);
         newMeshes[0].normals = m_sideNormals[0].ToArray();
         newMeshes[0].uv = m_sideUvs[0].ToArray();
 
-        newMeshes[1].vertices = m_sideVertices[1].ToArray();
         newMeshes[1].name = "Slice Side Other Mesh";
+        newMeshes[1].subMeshCount = meshFilter.mesh.subMeshCount + 1;
+        newMeshes[1].vertices = m_sideVertices[1].ToArray();
         newMeshes[1].SetIndices(m_sideIndices[1].ToArray(), MeshTopology.Triangles, 0);
+        newMeshes[0].SetIndices(m_sideIndices[2].ToArray(), MeshTopology.Triangles, 1);
         newMeshes[1].normals = m_sideNormals[1].ToArray();
         newMeshes[1].uv = m_sideUvs[1].ToArray();
 
