@@ -12,9 +12,10 @@ public class MeshSlice : MonoBehaviour
         public Vector3 normal;
         public Vector2 uv;
 
-        public ref MeshVertex left;
+        public int prevIndex;
+        public int nextIndex;
 
-        public MeshVertex(int _index, Vector3 _vertex, Vector3 _normal, Vector2 _uv) => (index, vertex, normal, uv) = (_index, _vertex, _normal, _uv);
+        public MeshVertex(int _index, Vector3 _vertex, Vector3 _normal, Vector2 _uv) => (index, vertex, normal, uv, prevIndex, nextIndex) = (_index, _vertex, _normal, _uv, 0, 0);
     }
     
     Vector3[] m_nearPoint = new Vector3[] { new Vector3(), new Vector3() };
@@ -31,8 +32,14 @@ public class MeshSlice : MonoBehaviour
 
     // New Vertices in Plane
     // Originl Vertices -> 2 Mesh vertices
+    List<int> m_newVertexIndices = new List<int>();
     Dictionary<int, Dictionary<int, MeshVertex>> m_newVertexInPlane = new Dictionary<int, Dictionary<int, MeshVertex>>();
     int m_newVertexCount = 0;
+
+    // Cut Plane Vertex
+    List<int> m_cutPlaneVertexIndices = new List<int>();
+    // A -> B
+    Dictionary<int, int> m_newVertexKeyMap = new Dictionary<int, int>();
 
     // 임시 나중에 Collider나 Trigger로 해당되는 Mesh들을 검출
     public GameObject targetObject;
@@ -263,29 +270,41 @@ public class MeshSlice : MonoBehaviour
             {
                 // Slice 2 Sides
                 // a side 1 vertex, other side 2 vertcies
-                // 1. Make Vertex Info
-                // 2. Add Triangle
+                // 1. Make New Vertex
+                // 2. Is New Vertex Data Exist?
+                // 3. Yes: Get Data / No: Add Two Triangles
                 AddSliceLineTriangle(Vector3.Cross(v1 - v0, v2 - v1), sideVertices, MakeNewVertexInPlane(slice, sideVertices));
             }
         }
 
-        // Make Slice Side Mesh
+        // Not Split Mesh
+        if (m_sideVertices[0].Count == 0 || m_sideVertices[1].Count == 0) return;
 
+        // Make Cut Plane Mesh
+        // 기본 기능 : 속이 꽉 찬 Mesh를 절단 하는 것
+        // 1. New Mesh Vertex를 순서대로 분류한다 List<int>()
+        // 2. 0번 인덱스와 인접하지 않은 가장 가까운 점과 연결하고 그 점에서 인접한 점을 찾는다
+        // 3. 3개의 점에대한 외적이 plane normal 값과 비교해서 옳바른 방향인지 확인한다.
+        // 4. 옳바른 방향이라면 해당 방향으로 나아간다.
 
+        // 심화 기능 고민해봐야 할 것 : 속이 빈 것을 절단하는 경우
+        // X Y Z축에 Projectoin을 해서 new vertex그룹이 겹쳐있다면 외부 내부를 가려야함
+        // 만약 x y z축중 한곳이라도 분리가 되어있다면 분리축이론에따라 두 그룹은 서로 다른 메시그룹임
+        // 만약 내부 외부로 나뉜다면 반드시 Triangle은 두 그룹을 2:1, 1:2로 구성된 버텍스정보여야함.
+        // 큰 그룹 내의 작은 그룹이 여러개 일 수 있음 (재귀 함수를 이용해서 검사해야 할 듯)
+        // 1. New Mesh Vertex를 순서대로 분류한다 List<int>()
+        // 2. List<List<int>> 로 각 절단면(List<int>)그룹을 겹친부분들에 대해서 데이터를 구성한다.
+        // 3. struct CutPlane { List<List<int>> : 해당하는 현재 그룹의 vertex }
         Mesh[] newMeshes = new Mesh[] { new Mesh(), new Mesh() };
         newMeshes[0].name = "Slice Side Main Mesh";
-        newMeshes[0].subMeshCount = meshFilter.mesh.subMeshCount + 1;
         newMeshes[0].vertices = m_sideVertices[0].ToArray();
         newMeshes[0].SetIndices(m_sideIndices[0].ToArray(), MeshTopology.Triangles, 0);
-        newMeshes[0].SetIndices(m_sideIndices[2].ToArray(), MeshTopology.Triangles, 1);
         newMeshes[0].normals = m_sideNormals[0].ToArray();
         newMeshes[0].uv = m_sideUvs[0].ToArray();
 
         newMeshes[1].name = "Slice Side Other Mesh";
-        newMeshes[1].subMeshCount = meshFilter.mesh.subMeshCount + 1;
         newMeshes[1].vertices = m_sideVertices[1].ToArray();
         newMeshes[1].SetIndices(m_sideIndices[1].ToArray(), MeshTopology.Triangles, 0);
-        newMeshes[0].SetIndices(m_sideIndices[2].ToArray(), MeshTopology.Triangles, 1);
         newMeshes[1].normals = m_sideNormals[1].ToArray();
         newMeshes[1].uv = m_sideUvs[1].ToArray();
 
